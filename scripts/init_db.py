@@ -8,6 +8,7 @@ class DatabaseInitializer:
     def __init__(self):
         self.project_root = Path(__file__).resolve().parents[1]
         self.schema_path = self.project_root / "sql" / "schema.sql"
+        self.views_path = self.project_root / "sql" / "views_gold.sql"
 
     def initialize(self, reset=False):
         if not self.schema_path.is_file():
@@ -15,7 +16,16 @@ class DatabaseInitializer:
                 f"Schema nao encontrado: {self.schema_path}"
             )
 
-        sql = self.schema_path.read_bytes()
+        if not self.views_path.is_file():
+            raise FileNotFoundError(
+                f"Views SQL nao encontradas: {self.views_path}"
+            )
+
+        sql = (
+            self.schema_path.read_bytes()
+            + b"\n"
+            + self.views_path.read_bytes()
+        )
 
         if reset:
             print("Removendo schema Gold existente...", flush=True)
