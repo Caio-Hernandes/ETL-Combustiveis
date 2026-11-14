@@ -1,17 +1,23 @@
+# Ambiente Python
 .venv/
 __pycache__/
+*.py[cod]
 .pytest_cache/
-*.pyc
-downloads/
 
+# Variáveis de ambiente
 .env
 
+# Dados brutos e processados
+downloads/*
 data/bronze/*
 data/silver/*
 data/rejected/*
+
+# Preservar a estrutura das pastas
+!downloads/.gitkeep
 !data/bronze/.gitkeep
 !data/silver/.gitkeep
 !data/rejected/.gitkeep
 
-logs/*
-!logs/.gitkeep
+# Logs
+*.log
