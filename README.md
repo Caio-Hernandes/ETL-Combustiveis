@@ -104,6 +104,8 @@ ETL-Combustiveis/
 ├── tests/
 │   ├── conftest.py
 │   ├── test_api.py
+│   ├── bronze/
+│   │   └── test_anp_extractor.py
 │   ├── silver/
 │   │   ├── test_transform.py
 │   │   └── test_pipeline.py
