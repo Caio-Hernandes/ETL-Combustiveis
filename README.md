@@ -337,8 +337,6 @@ Os dados utilizados são provenientes dos levantamentos públicos de preços de 
 
 - Controle de versões de arquivos por competência, além do hash.
 - Transação única para registro de processamento e atualização da Gold.
-- Automatização da obtenção dos CSVs.
-- Testes automatizados de qualidade e integração.
 - Agendamento e observabilidade das execuções do pipeline.
 
 ---
