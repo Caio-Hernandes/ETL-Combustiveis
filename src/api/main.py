@@ -8,7 +8,6 @@ from src.storage.postgres_repository import PostgresRepository
 from datetime import date
 from decimal import Decimal
 from typing import Literal
-from fastapi import HTTPException, Query
 
 
 app = FastAPI(
@@ -36,8 +35,6 @@ def health():
             detail="Banco de dados indisponivel",
         )
 
-
-@app.get("/precos/mensais")
 
 @app.get("/precos/mensais")
 def listar_precos_mensais(

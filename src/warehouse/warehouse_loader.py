@@ -1,9 +1,13 @@
 
+import logging
 from pathlib import Path
 
 import pandas as pd
 
 from src.storage.postgres_repository import PostgresRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 class WarehouseLoader:
@@ -30,12 +34,12 @@ class WarehouseLoader:
         "unidade_medida",
     ]
 
-    def __init__(self):
+    def __init__(self, repository=None, silver_dir=None):
         project_root = Path(__file__).resolve().parents[2]
 
-        self.silver_dir = project_root / "data" / "silver"
+        self.silver_dir = Path(silver_dir) if silver_dir is not None else project_root / "data" / "silver"
         self.sql_path = project_root / "sql" / "load_gold.sql"
-        self.repository = PostgresRepository()
+        self.repository = repository if repository is not None else PostgresRepository()
 
     def load(
         self,
@@ -112,15 +116,13 @@ class WarehouseLoader:
                 periodo=periodo,
             )
 
-            print(
-                f"Carregado: {arquivo.parent.name} "
-                f"({len(df)} registros)"
-            )
+            logger.info("Carregado: %s (%s registros)", arquivo, len(df))
 
         total = self.repository.count_facts()
 
-        print(f"\nTotal de registros na Gold: {total}")
+        logger.info("Total de registros na Gold: %s", total)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     WarehouseLoader().load()

@@ -1,7 +1,7 @@
 # ETL de Preços de Combustíveis — ANP
 
 Pipeline de engenharia de dados para ingestão, tratamento, validação, armazenamento e análise dos preços de combustíveis comercializados no Brasil, utilizando dados públicos da **Agência Nacional do Petróleo, Gás Natural e Biocombustíveis (ANP)**.
-Link para download://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis
+Link para download: https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis
 
 O projeto segue uma arquitetura em camadas **Bronze, Silver e Gold**, com carga incremental, Data Warehouse em PostgreSQL, API REST com FastAPI e análises exploratórias em Jupyter Notebook.
 
@@ -66,10 +66,11 @@ Arquivos CSV da ANP (downloads/)
 ```text
 ETL-Combustiveis/
 ├── analysis/
-│   └── eda_combustiveis.ipynb
+│   └── eda.ipynb
 ├── data/
 │   ├── bronze/
-│   └── silver/
+│   ├── silver/
+│   └── rejected/
 ├── downloads/
 ├── images/
 │   ├── containers.png
@@ -78,7 +79,10 @@ ETL-Combustiveis/
 │   ├── tabela fato.png
 │   └── tables.png
 ├── scripts/
-│   └── init_db.py
+│   ├── init_db.py
+│   ├── inspect_csv.py
+│   ├── inspect_transform.py
+│   └── validate_silver_manual.py
 ├── sql/
 │   ├── schema.sql
 │   ├── load_gold.sql
@@ -98,14 +102,20 @@ ETL-Combustiveis/
 │   │   └── warehouse_loader.py
 │   └── main.py
 ├── tests/
-│   ├── bronze/
-│   │   
+│   ├── conftest.py
+│   ├── test_api.py
 │   ├── silver/
-│   │   
-│   ├── gold/
+│   │   ├── test_transform.py
+│   │   └── test_pipeline.py
+│   └── gold/
+│       ├── test_warehouse.py
+│       └── test_idempotencia.py
 ├── docker-compose.yml
 ├── Dockerfile.api
 ├── requirements.txt
+├── requirements-api.txt
+├── requirements-dev.txt
+├── pytest.ini
 └── README.md
 ```
 
@@ -213,6 +223,29 @@ python -m src.main --dir downloads --force
 
 O pipeline percorre os arquivos em ordem de nome. Se ocorrer um erro, a execução é interrompida e pode ser retomada após a correção.
 
+Os caminhos das camadas podem ser configurados com `--bronze-dir`, `--silver-dir` e `--rejected-dir` (padrões: `data/bronze`, `data/silver` e `data/rejected`).
+
+Os registros inválidos são persistidos em `data/rejected/<nome>-<sha256>.parquet`, com a coluna `motivo_rejeicao`, antes da carga Silver/Gold, inclusive quando nenhum registro é válido. Reprocessamentos do mesmo arquivo substituem esse relatório. Duplicatas por CNPJ, combustível e data da coleta recebem o motivo `duplicata`, preservando a primeira ocorrência válida na ordem do CSV.
+
+## Testes
+
+Instale as dependências de desenvolvimento e execute os testes sem depender de CSVs locais ou de PostgreSQL:
+
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Os testes Gold são de integração e exigem uma Silver carregada e um banco de teste configurado no ambiente. O teste de idempotência executa novamente o loader nesse banco:
+
+```powershell
+python -m pytest tests/gold --run-integration
+```
+
+Os scripts de inspeção manual ficam em `scripts/` e podem ser executados com `python -m scripts.inspect_csv`, `python -m scripts.inspect_transform` e `python -m scripts.validate_silver_manual`. O último grava partições na Silver.
+
+A imagem Docker da API instala apenas `requirements-api.txt`; `requirements.txt` inclui as dependências do ETL e das análises. As versões diretas estão fixadas conforme o ambiente local validado.
+
 ## Processamento incremental
 
 Antes de executar o ETL, o sistema calcula o **SHA-256** de cada arquivo e consulta a tabela `etl.arquivos_processados`.
@@ -277,7 +310,7 @@ Documentação interativa: **http://localhost:8000/docs**.
 
 ## Análises exploratórias
 
-O notebook `analysis/eda_combustiveis.ipynb` utiliza Pandas e Matplotlib para investigar:
+O notebook `analysis/eda.ipynb` utiliza Pandas e Matplotlib para investigar:
 
 - Evolução mensal dos preços de gasolina e etanol.
 - Ranking dos estados com preços médios mais altos e mais baixos.

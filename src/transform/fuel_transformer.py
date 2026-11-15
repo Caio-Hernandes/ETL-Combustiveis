@@ -66,7 +66,7 @@ class FuelTransformer:
         ]
 
         for column in text_columns:
-            df[column] = df[column].str.strip()
+            df[column] = df[column].astype("string").str.strip().replace("", pd.NA)
 
         df["combustivel"] = df["combustivel"].str.upper()
         df["uf"] = df["uf"].str.upper()

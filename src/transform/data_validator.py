@@ -5,6 +5,8 @@ logger = logging.getLogger(__name__)
 
 
 class DataValidator:
+    BUSINESS_KEY = ["cnpj", "combustivel", "data_coleta"]
+
     REQUIRED_COLUMNS = [
         "uf",
         "municipio",
@@ -39,6 +41,11 @@ class DataValidator:
         )
 
         invalid_mask = missing_required | invalid_price
+        duplicates = pd.Series(False, index=df.index)
+        duplicates.loc[~invalid_mask] = df.loc[~invalid_mask].duplicated(
+            subset=self.BUSINESS_KEY, keep="first"
+        )
+        invalid_mask = invalid_mask | duplicates
 
         valid_df = df.loc[~invalid_mask].copy()
         rejected_df = df.loc[invalid_mask].copy()
@@ -54,6 +61,8 @@ class DataValidator:
             invalid_price.loc[rejected_df.index],
             "motivo_rejeicao"
         ] = "Preco nao positivo"
+
+        rejected_df.loc[duplicates.loc[rejected_df.index], "motivo_rejeicao"] = "duplicata"
 
         logger.info("Linhas recebidas: %s", len(df))
         logger.info("Linhas vazias: %s", int(empty_mask.sum()))

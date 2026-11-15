@@ -1,3 +1,4 @@
+import pytest
 
 import subprocess
 import sys
@@ -45,3 +46,6 @@ def test_reprocessamento_nao_duplica_dados():
         f"Dados alterados após reprocessamento. "
         f"Antes: {antes}, Depois: {depois}"
     )
+
+
+pytestmark = pytest.mark.integration

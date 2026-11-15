@@ -32,6 +32,12 @@ def processar_arquivo(
     origem: Path,
     repository: PostgresRepository,
     force: bool = False,
+    *,
+    extractor=None,
+    validator=None,
+    parquet_repository=None,
+    warehouse=None,
+    rejected_dir: Path = Path("data/rejected"),
 ) -> bool:
     logger.info("Processando arquivo: %s", origem.name)
 
@@ -50,7 +56,7 @@ def processar_arquivo(
     # 2. BRONZE
     logger.info("Iniciando camada Bronze...")
 
-    extractor = ANPExtractor(Path("data/bronze"))
+    extractor = extractor if extractor is not None else ANPExtractor(Path("data/bronze"))
     destination = extractor.ingest(origem)
 
     logger.info("Arquivo armazenado em: %s", destination)
@@ -71,12 +77,17 @@ def processar_arquivo(
     # 4. VALIDACAO
     logger.info("Validando os registros...")
 
-    validator = DataValidator()
+    validator = validator if validator is not None else DataValidator()
 
     validos, rejeitados = validator.validate(df_transformado)
 
     logger.info("Validos: %s", len(validos))
     logger.info("Rejeitados: %s", len(rejeitados))
+
+    rejected_dir.mkdir(parents=True, exist_ok=True)
+    destino_rejeitados = rejected_dir / f"{origem.stem}-{hash_arquivo}.parquet"
+    rejeitados.to_parquet(destino_rejeitados, index=False)
+    logger.info("Rejeitados persistidos em: %s", destino_rejeitados)
 
     if validos.empty:
         raise ValueError(
@@ -86,7 +97,7 @@ def processar_arquivo(
     # 5. SILVER
     logger.info("Persistindo camada Silver...")
 
-    parquet_repository = ParquetRepository("data/silver")
+    parquet_repository = parquet_repository if parquet_repository is not None else ParquetRepository("data/silver")
     arquivos = parquet_repository.save(validos)
 
     logger.info(
@@ -97,7 +108,7 @@ def processar_arquivo(
     # 6. GOLD
     logger.info("Iniciando carga incremental da Gold...")
 
-    warehouse = WarehouseLoader()
+    warehouse = warehouse if warehouse is not None else WarehouseLoader(repository=repository)
 
     warehouse.load(
         arquivos=arquivos,
@@ -147,6 +158,10 @@ def main():
         help="Forca o reprocessamento dos arquivos",
     )
 
+    parser.add_argument("--bronze-dir", type=Path, default=Path("data/bronze"))
+    parser.add_argument("--silver-dir", type=Path, default=Path("data/silver"))
+    parser.add_argument("--rejected-dir", type=Path, default=Path("data/rejected"))
+
     args = parser.parse_args()
 
     # SELECAO DOS ARQUIVOS
@@ -186,6 +201,11 @@ def main():
 
     repository = PostgresRepository()
 
+    extractor = ANPExtractor(args.bronze_dir)
+    validator = DataValidator()
+    parquet_repository = ParquetRepository(args.silver_dir)
+    warehouse = WarehouseLoader(repository=repository, silver_dir=args.silver_dir)
+
     processados = 0
     ignorados = 0
 
@@ -195,6 +215,11 @@ def main():
             origem=origem,
             repository=repository,
             force=args.force,
+            extractor=extractor,
+            validator=validator,
+            parquet_repository=parquet_repository,
+            warehouse=warehouse,
+            rejected_dir=args.rejected_dir,
         )
 
         if resultado:

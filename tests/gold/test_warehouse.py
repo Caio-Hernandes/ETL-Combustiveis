@@ -105,3 +105,6 @@ def test_integridade_referencial(connection):
     assert inconsistencias == 0, (
         f"Encontradas {inconsistencias} referencias invalidas"
     )
+
+
+pytestmark = pytest.mark.integration

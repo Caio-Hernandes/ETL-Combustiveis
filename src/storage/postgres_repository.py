@@ -4,7 +4,10 @@ from datetime import date
 from io import StringIO
 from pathlib import Path
 
-import pandas as pd
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
@@ -27,7 +30,7 @@ class PostgresRepository:
 
     def load_dataframe(
         self,
-        df: pd.DataFrame,
+        df: "pd.DataFrame",
         sql: str,
         periodo: tuple[date, date] | None = None,
     ):
