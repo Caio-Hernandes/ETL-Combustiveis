@@ -1,5 +1,6 @@
 
 import argparse
+import hashlib
 import logging
 from pathlib import Path
 
@@ -7,39 +8,54 @@ from src.extract.anp_extractor import ANPExtractor
 from src.transform.fuel_transformer import FuelTransformer
 from src.transform.data_validator import DataValidator
 from src.storage.parquet_repository import ParquetRepository
+from src.storage.postgres_repository import PostgresRepository
 from src.warehouse.warehouse_loader import WarehouseLoader
 
 
 logger = logging.getLogger(__name__)
 
 
-def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s"
-    )
+def calcular_hash(caminho: Path) -> str:
+    sha256 = hashlib.sha256()
 
-    parser = argparse.ArgumentParser(
-        description="Pipeline ETL de precos de combustiveis da ANP"
-    )
+    with caminho.open("rb") as arquivo:
+        for bloco in iter(
+            lambda: arquivo.read(1024 * 1024),
+            b"",
+        ):
+            sha256.update(bloco)
 
-    parser.add_argument(
-        "--file",
-        required=True,
-        help="Caminho do CSV original da ANP"
-    )
+    return sha256.hexdigest()
 
-    args = parser.parse_args()
 
-    # 1. BRONZE
+def processar_arquivo(
+    origem: Path,
+    repository: PostgresRepository,
+    force: bool = False,
+) -> bool:
+    logger.info("Processando arquivo: %s", origem.name)
+
+    # 1. CONTROLE INCREMENTAL
+    logger.info("Verificando historico de processamento...")
+
+    hash_arquivo = calcular_hash(origem)
+
+    if not force and repository.file_processed(hash_arquivo):
+        logger.info(
+            "Arquivo ja processado: %s. Ignorando.",
+            origem.name,
+        )
+        return False
+
+    # 2. BRONZE
     logger.info("Iniciando camada Bronze...")
 
     extractor = ANPExtractor(Path("data/bronze"))
-    destination = extractor.ingest(args.file)
+    destination = extractor.ingest(origem)
 
     logger.info("Arquivo armazenado em: %s", destination)
 
-    # 2. TRANSFORMACAO
+    # 3. TRANSFORMACAO
     logger.info("Iniciando transformacao dos dados...")
 
     transformer = FuelTransformer(destination)
@@ -49,10 +65,10 @@ def main():
 
     logger.info(
         "Registros transformados: %s",
-        len(df_transformado)
+        len(df_transformado),
     )
 
-    # 3. VALIDACAO
+    # 4. VALIDACAO
     logger.info("Validando os registros...")
 
     validator = DataValidator()
@@ -64,27 +80,135 @@ def main():
 
     if validos.empty:
         raise ValueError(
-            "Nenhum registro valido encontrado. Pipeline interrompido."
+            f"Nenhum registro valido encontrado em {origem.name}."
         )
 
-    # 4. SILVER
+    # 5. SILVER
     logger.info("Persistindo camada Silver...")
 
     parquet_repository = ParquetRepository("data/silver")
     arquivos = parquet_repository.save(validos)
 
     logger.info(
-        "Arquivos Parquet gerados: %s",
-        len(arquivos)
+        "Particoes geradas: %s",
+        len(arquivos),
     )
 
-    # 5. GOLD
-    logger.info("Iniciando carga da Gold...")
+    # 6. GOLD
+    logger.info("Iniciando carga incremental da Gold...")
 
     warehouse = WarehouseLoader()
-    warehouse.load()
 
+    warehouse.load(
+        arquivos=arquivos,
+        substituir_meses=True,
+    )
+
+    # 7. REGISTRO DE PROCESSAMENTO
+    repository.register_file(
+        nome_arquivo=origem.name,
+        hash_sha256=hash_arquivo,
+        registros_validos=len(validos),
+    )
+
+    logger.info(
+        "Arquivo processado com sucesso: %s",
+        origem.name,
+    )
+
+    return True
+
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
+    parser = argparse.ArgumentParser(
+        description="Pipeline ETL de precos de combustiveis da ANP"
+    )
+
+    grupo = parser.add_mutually_exclusive_group(required=True)
+
+    grupo.add_argument(
+        "--file",
+        help="Caminho de um CSV da ANP",
+    )
+
+    grupo.add_argument(
+        "--dir",
+        help="Pasta contendo os CSVs da ANP",
+    )
+
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Forca o reprocessamento dos arquivos",
+    )
+
+    args = parser.parse_args()
+
+    # SELECAO DOS ARQUIVOS
+    if args.file:
+        origem = Path(args.file)
+
+        if not origem.is_file():
+            parser.error(f"Arquivo nao encontrado: {origem}")
+
+        arquivos = [origem]
+
+    else:
+        pasta = Path(args.dir)
+
+        if not pasta.is_dir():
+            parser.error(f"Diretorio nao encontrado: {pasta}")
+
+        arquivos = sorted(
+            (
+                arquivo
+                for arquivo in pasta.iterdir()
+                if arquivo.is_file()
+                and arquivo.suffix.lower() == ".csv"
+            ),
+            key=lambda arquivo: arquivo.name.lower(),
+        )
+
+        if not arquivos:
+            parser.error(
+                f"Nenhum arquivo CSV encontrado em: {pasta}"
+            )
+
+    logger.info(
+        "Arquivos encontrados: %s",
+        len(arquivos),
+    )
+
+    repository = PostgresRepository()
+
+    processados = 0
+    ignorados = 0
+
+    # PROCESSAMENTO DOS ARQUIVOS
+    for origem in arquivos:
+        resultado = processar_arquivo(
+            origem=origem,
+            repository=repository,
+            force=args.force,
+        )
+
+        if resultado:
+            processados += 1
+        else:
+            ignorados += 1
+
+    # RESUMO
+    logger.info("====================================")
     logger.info("Pipeline ETL finalizado com sucesso!")
+    logger.info("Total de arquivos: %s", len(arquivos))
+    logger.info("Processados: %s", processados)
+    logger.info("Ignorados: %s", ignorados)
+    logger.info("====================================")
 
 
 if __name__ == "__main__":

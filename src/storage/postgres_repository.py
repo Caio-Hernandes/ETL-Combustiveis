@@ -1,5 +1,6 @@
 
 import os
+from datetime import date
 from io import StringIO
 from pathlib import Path
 
@@ -24,7 +25,12 @@ class PostgresRepository:
         if not self.connection_params["password"]:
             raise ValueError("POSTGRES_PASSWORD nao configurada.")
 
-    def load_dataframe(self, df: pd.DataFrame, sql: str):
+    def load_dataframe(
+        self,
+        df: pd.DataFrame,
+        sql: str,
+        periodo: tuple[date, date] | None = None,
+    ):
         buffer = StringIO()
         df.to_csv(buffer, index=False, na_rep="")
         buffer.seek(0)
@@ -58,6 +64,18 @@ class PostgresRepository:
                     while bloco := buffer.read(1024 * 1024):
                         copy.write(bloco)
 
+                if periodo is not None:
+                    inicio, fim = periodo
+
+                    cursor.execute(
+                        """
+                        DELETE FROM gold.fato_preco
+                        WHERE data_coleta >= %s
+                          AND data_coleta < %s
+                        """,
+                        (inicio, fim),
+                    )
+
                 cursor.execute(sql)
 
     def count_facts(self) -> int:
@@ -67,3 +85,47 @@ class PostgresRepository:
                     "SELECT COUNT(*) FROM gold.fato_preco"
                 )
                 return cursor.fetchone()[0]
+
+    def file_processed(self, hash_sha256: str) -> bool:
+        with psycopg.connect(**self.connection_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM etl.arquivos_processados
+                        WHERE hash_sha256 = %s
+                    )
+                    """,
+                    (hash_sha256,),
+                )
+                return cursor.fetchone()[0]
+
+    def register_file(
+        self,
+        nome_arquivo: str,
+        hash_sha256: str,
+        registros_validos: int,
+    ):
+        with psycopg.connect(**self.connection_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO etl.arquivos_processados (
+                        nome_arquivo,
+                        hash_sha256,
+                        registros_validos
+                    )
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (hash_sha256)
+                    DO UPDATE SET
+                        nome_arquivo = EXCLUDED.nome_arquivo,
+                        registros_validos = EXCLUDED.registros_validos,
+                        processado_em = NOW()
+                    """,
+                    (
+                        nome_arquivo,
+                        hash_sha256,
+                        registros_validos,
+                    ),
+                )

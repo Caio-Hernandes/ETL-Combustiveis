@@ -37,10 +37,17 @@ class WarehouseLoader:
         self.sql_path = project_root / "sql" / "load_gold.sql"
         self.repository = PostgresRepository()
 
-    def load(self):
-        arquivos = sorted(
-            self.silver_dir.glob("ano=*/mes=*/*.parquet")
-        )
+    def load(
+        self,
+        arquivos: list[Path] | None = None,
+        substituir_meses: bool = False,
+    ):
+        if arquivos is None:
+            arquivos = sorted(
+                self.silver_dir.glob("ano=*/mes=*/*.parquet")
+            )
+        else:
+            arquivos = sorted(Path(a) for a in arquivos)
 
         if not arquivos:
             raise FileNotFoundError(
@@ -74,11 +81,36 @@ class WarehouseLoader:
                     f"Precos invalidos em {arquivo}"
                 )
 
+            periodo = None
+
+            if substituir_meses:
+                meses = (
+                    df["data_coleta"]
+                    .dt.to_period("M")
+                    .unique()
+                )
+
+                if len(meses) != 1:
+                    raise ValueError(
+                        f"Arquivo deve conter apenas um mes: {arquivo}"
+                    )
+
+                mes = meses[0]
+
+                inicio = mes.start_time.date()
+                fim = (mes + 1).start_time.date()
+
+                periodo = (inicio, fim)
+
             df["data_coleta"] = (
                 df["data_coleta"].dt.strftime("%Y-%m-%d")
             )
 
-            self.repository.load_dataframe(df, sql)
+            self.repository.load_dataframe(
+                df,
+                sql,
+                periodo=periodo,
+            )
 
             print(
                 f"Carregado: {arquivo.parent.name} "

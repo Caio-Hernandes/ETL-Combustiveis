@@ -72,3 +72,13 @@ CREATE INDEX IF NOT EXISTS idx_fato_combustivel
 
 CREATE INDEX IF NOT EXISTS idx_fato_revenda
     ON gold.fato_preco(revenda_id);
+
+CREATE SCHEMA IF NOT EXISTS etl;
+
+CREATE TABLE IF NOT EXISTS etl.arquivos_processados (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nome_arquivo TEXT NOT NULL,
+    hash_sha256 CHAR(64) NOT NULL UNIQUE,
+    registros_validos INTEGER NOT NULL,
+    processado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
