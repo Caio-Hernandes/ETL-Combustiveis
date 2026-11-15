@@ -1,6 +1,7 @@
 # ETL de Preços de Combustíveis — ANP
 
 Pipeline de engenharia de dados para ingestão, tratamento, validação, armazenamento e análise dos preços de combustíveis comercializados no Brasil, utilizando dados públicos da **Agência Nacional do Petróleo, Gás Natural e Biocombustíveis (ANP)**.
+Link para download://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis
 
 O projeto segue uma arquitetura em camadas **Bronze, Silver e Gold**, com carga incremental, Data Warehouse em PostgreSQL, API REST com FastAPI e análises exploratórias em Jupyter Notebook.
 
@@ -45,7 +46,6 @@ Arquivos CSV da ANP (downloads/)
 
 - Ingestão de arquivos CSV semestrais da ANP.
 - Tratamento de tipos, datas, preços e demais campos.
-- Validação de registros, com separação de dados rejeitados.
 - Persistência em Parquet particionado por `ano` e `mes`.
 - Modelo dimensional no PostgreSQL.
 - Carga de dados com tratamento de conflitos.
@@ -71,6 +71,12 @@ ETL-Combustiveis/
 │   ├── bronze/
 │   └── silver/
 ├── downloads/
+├── images/
+│   ├── containers.png
+│   ├── distribuicao_precos.png
+│   ├── swagger.png
+│   ├── tabela fato.png
+│   └── tables.png
 ├── scripts/
 │   └── init_db.py
 ├── sql/
@@ -163,6 +169,10 @@ Serviços disponíveis localmente:
 | FastAPI | `http://localhost:8000` |
 | Swagger UI | `http://localhost:8000/docs` |
 
+Exemplo dos serviços em execução no Docker Desktop:
+
+![Contêineres do PostgreSQL, pgAdmin e API em execução no Docker Desktop](images/containers.png)
+
 ### 5. Inicializar o banco de dados
 
 ```powershell
@@ -228,11 +238,19 @@ O Data Warehouse utiliza um modelo dimensional com as seguintes tabelas:
 | `gold.dim_revenda` | Revenda, CNPJ e bandeira |
 | `gold.fato_preco` | Observações de preços vinculadas às dimensões |
 
+Exemplo de consulta aos registros carregados na tabela fato:
+
+![Consulta à tabela gold.fato_preco no pgAdmin, com datas, dimensões e preços de venda](images/tabela%20fato.png)
+
 ### Views analíticas
 
 - `gold.vw_preco_mensal_uf`: preços médios, mínimos e máximos por mês, UF e combustível, além de quantidades de coletas e postos pesquisados.
 - `gold.vw_preco_mensal_brasil`: indicadores mensais agregados para o Brasil.
 - `gold.vw_variacao_mensal_uf`: evolução e variação percentual dos preços médios mensais por UF e combustível.
+
+Tabelas e views da camada Gold no pgAdmin:
+
+![Estrutura da camada Gold no pgAdmin, com cinco tabelas e três views analíticas](images/tables.png)
 
 ## API REST
 
@@ -255,6 +273,8 @@ A rota de preços oferece filtros por UF, combustível, ano, intervalo de meses 
 
 Documentação interativa: **http://localhost:8000/docs**.
 
+![Swagger da API de combustíveis com filtros de consulta de preços mensais](images/swagger.png)
+
 ## Análises exploratórias
 
 O notebook `analysis/eda_combustiveis.ipynb` utiliza Pandas e Matplotlib para investigar:
@@ -269,6 +289,10 @@ O notebook `analysis/eda_combustiveis.ipynb` utiliza Pandas e Matplotlib para in
 Para executar, abra o notebook no VS Code, selecione o interpretador da `.venv` como kernel e execute as células na ordem.
 
 Os resultados variam conforme os arquivos carregados no Data Warehouse.
+
+Exemplo de distribuição dos preços de venda da gasolina, com o número de coletas por faixa de preço:
+
+![Histograma da distribuição dos preços da gasolina, em reais por litro](images/distribuicao_precos.png)
 
 ## Fonte dos dados
 
